@@ -12,8 +12,8 @@ class Clerk:
     def __init__(self, servers: List[ClientEnd], cfg):
         self.servers = servers
         self.cfg = cfg
-
-        # Your definitions here.
+        self.request_id = 0
+        self.client_id = nrand()
 
     # Fetch the current value for a key.
     # Returns "" if the key does not exist.
@@ -28,6 +28,11 @@ class Clerk:
     # arguments in server.py.
     def get(self, key: str) -> str:
         # You will have to modify this function.
+        key = GetArgs(key)
+        for server in self.servers:
+            reply = server.call("KVServer.Get", key)
+            if reply is not None:
+                return reply.value
         return ""
 
     # Shared by Put and Append.
@@ -40,7 +45,15 @@ class Clerk:
     # must match the declared types of the RPC handler function's
     # arguments in server.py.
     def put_append(self, key: str, value: str, op: str) -> str:
-        # You will have to modify this function.
+        # with self.mu:
+        #     self.request_id += 1
+        #     req = self.request_id
+        args = PutAppendArgs(key, value)
+
+        for server in self.servers:
+            reply = server.call("KVServer."+op, args)
+            if reply is not None:
+                return reply if op == "Append" else ""
         return ""
 
     def put(self, key: str, value: str):
