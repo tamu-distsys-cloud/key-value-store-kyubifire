@@ -14,10 +14,11 @@ class Clerk:
         self.cfg = cfg
         self.request_id = 0
         self.client_id = nrand()
-        #self.nshards = cfg.nshards
+        self.nshards = cfg.nservers // cfg.nreplicas
+        self.nreplicas = cfg.nreplicas
 
-    # def get_shard(self, key: str) -> int:
-    #     return int(key) % self.nshards
+    def get_shard(self, key: str) -> int:
+        return int(key) % self.nshards
 
     # Fetch the current value for a key.
     # Returns "" if the key does not exist.
@@ -33,11 +34,15 @@ class Clerk:
     def get(self, key: str) -> str:
         self.request_id += 1
         args = GetArgs(key, self.client_id, self.request_id)
-        # shard = self.get_shard(key)
+        shard = 0
+        if key.isdigit():
+            shard = self.get_shard(key)
         while True:
-            for server in self.servers:
+            #for i in range(len(self.servers)):
+            for i in range(self.nreplicas):
+                server_index = (shard * self.nreplicas + i) % len(self.servers)
                 try:
-                    reply = server.call("KVServer.Get", args)
+                    reply = self.servers[server_index].call("KVServer.Get", args)
                     if reply is not None:
                         return reply.value
                     else:
@@ -57,10 +62,16 @@ class Clerk:
     def put_append(self, key: str, value: str, op: str) -> str:
         self.request_id += 1
         args = PutAppendArgs(key, value, self.client_id, self.request_id)
+        #need to group servers that belong to the same shard
+        shard = 0
+        if key.isdigit():
+            shard = self.get_shard(key)
         while True:
-            for server in self.servers:
+            # for i in range(len(self.servers)):
+            for i in range(self.nreplicas):
+                server_index = (shard * self.nreplicas + i) % len(self.servers)
                 try:
-                    reply = server.call("KVServer." + op, args)
+                    reply = self.servers[server_index].call("KVServer." + op, args)
                     if op == "Append":
                         return reply
                     else:

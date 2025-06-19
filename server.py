@@ -42,6 +42,12 @@ class KVServer:
         self.cfg = cfg
         self.kv = dict()
         self.client_req = {}
+        self.total_servers = cfg.nservers
+        self.nreplicas = cfg.nreplicas
+        self.nshards = self.total_servers // self.nreplicas
+
+    def get_shard(self, key: str) -> int:
+        return int(key) % self.nshards
 
     def Get(self, args: GetArgs):
         reply = GetReply(None)
@@ -55,7 +61,6 @@ class KVServer:
         # client_id -> (req_id, success/fail)
         with self.mu:
             last_req = self.client_req.get(args.client_id)
-            print(last_req)
             if last_req is not None and last_req[0] >= args.req_id:
                 return  # Duplicate or older request, ignore
 
