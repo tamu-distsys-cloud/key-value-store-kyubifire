@@ -14,7 +14,7 @@ class Clerk:
         self.cfg = cfg
         self.request_id = 0
         self.client_id = nrand()
-        self.nshards = cfg.nservers // cfg.nreplicas
+        self.nshards = cfg.nservers
         self.nreplicas = cfg.nreplicas
 
     def get_shard(self, key: str) -> int:
@@ -38,9 +38,8 @@ class Clerk:
         if key.isdigit():
             shard = self.get_shard(key)
         while True:
-            #for i in range(len(self.servers)):
             for i in range(self.nreplicas):
-                server_index = (shard * self.nreplicas + i) % len(self.servers)
+                server_index = (shard + i) % len(self.servers) # prevent going out of bounds
                 try:
                     reply = self.servers[server_index].call("KVServer.Get", args)
                     if reply is not None:
@@ -61,19 +60,25 @@ class Clerk:
     # arguments in server.py.
     def put_append(self, key: str, value: str, op: str) -> str:
         self.request_id += 1
-        args = PutAppendArgs(key, value, self.client_id, self.request_id)
-        #need to group servers that belong to the same shard
         shard = 0
         if key.isdigit():
             shard = self.get_shard(key)
         while True:
-            # for i in range(len(self.servers)):
             for i in range(self.nreplicas):
-                server_index = (shard * self.nreplicas + i) % len(self.servers)
+                server_index = (shard + i) % len(self.servers) # prevent going out of bounds
                 try:
+                    args = PutAppendArgs(key, value, self.client_id, self.request_id, shard, server_index)
                     reply = self.servers[server_index].call("KVServer." + op, args)
+                    if reply is not None and isinstance(reply, PutAppendReply):
+                        if reply.redirect:
+                            args.server_id = reply.redirect
+                            self.servers[reply.redirect].call("KVServer." + op, args)
                     if op == "Append":
-                        return reply
+                        if isinstance(reply, PutAppendReply):
+                            return reply.value
+                        else:
+                            # sometimes reply is a string, when it succeeds append
+                            return reply
                     else:
                         return ""
                 except TimeoutError:
